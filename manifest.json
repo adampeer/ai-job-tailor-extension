@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Job Tailor",
+  "version": "1.0.0",
+  "description": "Scrape job details from popular job boards and generate customized resumes using AI.",
+  "permissions": ["storage", "activeTab", "scripting", "downloads"],
+  "host_permissions": ["http://localhost:3000/*", "https://localhost:3000/*"],
+  "icons": {
+    "16": "public/icons/icon_16.png",
+    "48": "public/icons/icon_48.png",
+    "128": "public/icons/icon_128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "public/icons/icon_16.png",
+      "48": "public/icons/icon_48.png",
+      "128": "public/icons/icon_128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://www.linkedin.com/jobs/*"],
+      "js": ["config.js", "contentScript.js"]
+    }
+  ]
+}
