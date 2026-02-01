@@ -9,9 +9,34 @@
   <body>
     <div class="popup-container">
       <h1>Job Tailor</h1>
-      <p class="subtitle">
-        Navigate to a LinkedIn job search page to get started
-      </p>
+
+      <div id="auth-section">
+        <div id="loading-state" class="auth-state">
+          <p>Loading...</p>
+        </div>
+
+        <div id="connected-state" class="auth-state" style="display: none">
+          <div class="status-badge connected">
+            <span class="status-dot"></span>
+            Connected
+          </div>
+          <p class="subtitle">
+            Navigate to a LinkedIn job search page to get started
+          </p>
+          <button id="logout-btn" class="btn btn-secondary">Disconnect</button>
+        </div>
+
+        <div id="disconnected-state" class="auth-state" style="display: none">
+          <div class="status-badge disconnected">
+            <span class="status-dot"></span>
+            Not Connected
+          </div>
+          <p class="subtitle">Connect to Resume Tailor to generate resumes</p>
+          <button id="connect-btn" class="btn btn-primary">
+            Connect to Resume Tailor
+          </button>
+        </div>
+      </div>
     </div>
     <script src="config.js"></script>
     <script src="popup.js"></script>

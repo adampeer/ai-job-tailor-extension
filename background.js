@@ -1,51 +1,125 @@
 importScripts("config.js");
 
-const SESSION_ENDPOINT = `${CONFIG.API_BASE_URL}/api/session-token`;
+const AUTH_STORAGE_KEY = "authData";
+const AUTH_URL = `${CONFIG.API_BASE_URL}/auth/extension`;
 
-async function requestAndStoreSessionToken(triggerSource) {
-  try {
-    const response = await fetch(SESSION_ENDPOINT, {
-      method: "GET",
-      credentials: "include",
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const { access_token } = await response.json(); // Changed from 'token' to 'access_token'
-    if (!access_token) {
-      throw new Error("Missing token in response");
-    }
-
-    await chrome.storage.local.set({ sessionToken: access_token }); // Store the access_token
-    console.log(`[session] Stored session token after ${triggerSource}.`);
-    return { ok: true };
-  } catch (error) {
-    console.error(`[session] Failed to sync (${triggerSource}):`, error);
-    return { ok: false, message: error.message };
-  }
+async function getAuthData() {
+  const result = await chrome.storage.local.get(AUTH_STORAGE_KEY);
+  return result[AUTH_STORAGE_KEY] || null;
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  requestAndStoreSessionToken("install");
-});
+async function setAuthData(data) {
+  await chrome.storage.local.set({ [AUTH_STORAGE_KEY]: data });
+}
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type === "SYNC_SESSION") {
-    requestAndStoreSessionToken("manual click").then(sendResponse);
-    return true; // keep channel open
+async function clearAuthData() {
+  await chrome.storage.local.remove(AUTH_STORAGE_KEY);
+}
+
+function isTokenExpired(expiresAt) {
+  const bufferMs = 60 * 1000;
+  return Date.now() >= expiresAt * 1000 - bufferMs;
+}
+
+async function getValidAccessToken() {
+  const authData = await getAuthData();
+  if (!authData) {
+    return null;
   }
 
-  if (message?.type === "GET_SESSION_TOKEN") {
-    chrome.storage.local.get("sessionToken", ({ sessionToken }) => {
-      console.log(
-        "[background] Retrieved token for content script:",
-        sessionToken ? "✅ Found" : "❌ Missing"
-      );
-      sendResponse({ token: sessionToken });
-    });
-    return true; // keep channel open
+  if (isTokenExpired(authData.expires_at)) {
+    console.log("[auth] Token expired, clearing auth data");
+    await clearAuthData();
+    return null;
+  }
+
+  return authData.access_token;
+}
+
+async function openAuthTab() {
+  const tab = await chrome.tabs.create({ url: AUTH_URL });
+  return tab.id;
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "AUTH_TOKEN_RECEIVED") {
+    const { payload } = message;
+    setAuthData({
+      access_token: payload.access_token,
+      refresh_token: payload.refresh_token,
+      expires_at: payload.expires_at,
+      user_id: payload.user_id,
+    })
+      .then(() => {
+        console.log("[auth] Token stored successfully");
+        if (sender.tab?.id) {
+          chrome.tabs.remove(sender.tab.id).catch(() => {});
+        }
+        sendResponse({ ok: true });
+      })
+      .catch((error) => {
+        console.error("[auth] Failed to store token:", error);
+        sendResponse({ ok: false, message: error.message });
+      });
+    return true;
+  }
+
+  if (message?.type === "START_AUTH") {
+    openAuthTab()
+      .then((tabId) => {
+        sendResponse({ ok: true, tabId });
+      })
+      .catch((error) => {
+        sendResponse({ ok: false, message: error.message });
+      });
+    return true;
+  }
+
+  if (message?.type === "GET_AUTH_STATUS") {
+    getAuthData()
+      .then((authData) => {
+        if (!authData) {
+          sendResponse({ authenticated: false });
+          return;
+        }
+        if (isTokenExpired(authData.expires_at)) {
+          clearAuthData().then(() => {
+            sendResponse({ authenticated: false });
+          });
+          return;
+        }
+        sendResponse({
+          authenticated: true,
+          user_id: authData.user_id,
+          expires_at: authData.expires_at,
+        });
+      })
+      .catch((error) => {
+        sendResponse({ authenticated: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (message?.type === "GET_ACCESS_TOKEN") {
+    getValidAccessToken()
+      .then((token) => {
+        sendResponse({ token });
+      })
+      .catch((error) => {
+        sendResponse({ token: null, error: error.message });
+      });
+    return true;
+  }
+
+  if (message?.type === "LOGOUT") {
+    clearAuthData()
+      .then(() => {
+        sendResponse({ ok: true });
+      })
+      .catch((error) => {
+        sendResponse({ ok: false, message: error.message });
+      });
+    return true;
   }
 
   return undefined;

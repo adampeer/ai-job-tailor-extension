@@ -3,8 +3,12 @@
   "name": "Job Tailor",
   "version": "1.0.0",
   "description": "Scrape job details from popular job boards and generate customized resumes using AI.",
-  "permissions": ["storage", "activeTab", "scripting", "downloads"],
-  "host_permissions": ["http://localhost:3000/*", "https://localhost:3000/*"],
+  "permissions": ["storage", "activeTab", "scripting", "downloads", "tabs"],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "https://localhost:3000/*",
+    "https://resume.adampeer.me/*"
+  ],
   "icons": {
     "16": "public/icons/icon_16.png",
     "48": "public/icons/icon_48.png",
@@ -25,6 +29,16 @@
     {
       "matches": ["*://www.linkedin.com/jobs/*"],
       "js": ["config.js", "contentScript.js"]
+    },
+    {
+      "matches": ["http://localhost:3000/auth/extension*"],
+      "js": ["authContentScript.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://resume.adampeer.me/auth/extension*"],
+      "js": ["authContentScript.js"],
+      "run_at": "document_start"
     }
   ]
 }

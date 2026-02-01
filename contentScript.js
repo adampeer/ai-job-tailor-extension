@@ -1,25 +1,6 @@
 console.log("Content script loaded");
 
 /**
- * @function autoSyncSession
- * @description
- * Uses chrome.runtime.sendMessage to trigger a session sync with the background script.
- * This is typically called on extension load or after a failed API call (401).
- *
- * JSDom: This function interacts with the Chrome extension messaging API and does not modify the DOM.
- * It logs the result of the sync attempt to the console.
- */
-const autoSyncSession = () => {
-  chrome.runtime.sendMessage({ type: "SYNC_SESSION" }, (response) => {
-    if (response?.ok) {
-      console.log("✅ Session auto-synced successfully");
-    } else {
-      console.error("❌ Auto-sync failed:", response?.message);
-    }
-  });
-};
-
-/**
  * Scrapes job information from the LinkedIn job page.
  */
 const scrapeJob = () => {
@@ -58,9 +39,9 @@ const findJobActionsSaveButton = () => {
 };
 
 /*
- * Retrieves the session token from the background script via messaging.
+ * Retrieves the access token from the background script via messaging.
  */
-const getSessionToken = () =>
+const getAccessToken = () =>
   new Promise((resolve) => {
     if (typeof chrome === "undefined" || !chrome.runtime) {
       console.error("Chrome runtime is unavailable.");
@@ -68,83 +49,69 @@ const getSessionToken = () =>
       return;
     }
 
-    chrome.runtime.sendMessage({ type: "GET_SESSION_TOKEN" }, (response) => {
+    chrome.runtime.sendMessage({ type: "GET_ACCESS_TOKEN" }, (response) => {
       if (chrome.runtime.lastError) {
-        console.error("Failed to get session token:", chrome.runtime.lastError);
+        console.error("Failed to get access token:", chrome.runtime.lastError);
         resolve(undefined);
         return;
       }
-      console.log("Session token retrieved via message:", response?.token);
       resolve(response?.token);
     });
   });
 
 /*
- * Shows the re-sync button for session management.
+ * Opens the auth flow in a new tab.
  */
-const showResyncButton = () => {
-  // Remove any existing re-sync button
-  const oldBtn = document.getElementById("jt-resync-btn");
+const startAuthFlow = () => {
+  chrome.runtime.sendMessage({ type: "START_AUTH" });
+};
+
+/*
+ * Shows the connect button for authentication.
+ */
+const showConnectButton = () => {
+  const oldBtn = document.getElementById("jt-connect-btn");
   if (oldBtn) oldBtn.remove();
 
-  // Find the Generate Resume button to place next to
   const generateBtn = document.getElementById("custom-scrape-button");
   if (!generateBtn) return;
 
-  // Create the re-sync button
-  const resyncBtn = document.createElement("button");
-  resyncBtn.id = "jt-resync-btn";
-  resyncBtn.innerHTML = "Re-sync Session";
-  resyncBtn.style.marginLeft = "1rem";
-  resyncBtn.style.padding = "1rem 2rem";
-  resyncBtn.style.backgroundColor = "#fffbcc";
-  resyncBtn.style.color = "#6b5500";
-  resyncBtn.style.border = "1px solid #f3d36b";
-  resyncBtn.style.borderRadius = "99rem";
-  resyncBtn.style.fontWeight = "600";
-  resyncBtn.style.fontSize = "16px";
-  resyncBtn.style.lineHeight = "20px";
-  resyncBtn.style.cursor = "pointer";
-  resyncBtn.style.display = "inline-flex";
-  resyncBtn.style.alignItems = "center";
-  resyncBtn.style.gap = "0.5em";
-  resyncBtn.style.verticalAlign = "middle";
+  const connectBtn = document.createElement("button");
+  connectBtn.id = "jt-connect-btn";
+  connectBtn.innerHTML = "Connect to Resume Tailor";
+  connectBtn.style.marginLeft = "1rem";
+  connectBtn.style.padding = "1rem 2rem";
+  connectBtn.style.backgroundColor = "#fffbcc";
+  connectBtn.style.color = "#6b5500";
+  connectBtn.style.border = "1px solid #f3d36b";
+  connectBtn.style.borderRadius = "99rem";
+  connectBtn.style.fontWeight = "600";
+  connectBtn.style.fontSize = "16px";
+  connectBtn.style.lineHeight = "20px";
+  connectBtn.style.cursor = "pointer";
+  connectBtn.style.display = "inline-flex";
+  connectBtn.style.alignItems = "center";
+  connectBtn.style.gap = "0.5em";
+  connectBtn.style.verticalAlign = "middle";
 
-  // Spinner/tick/cross for feedback
-  const spinner = `<span class="jt-spinner" style="display:inline-block;width:18px;height:18px;border:2px solid #fff;border-top:2px solid #f3d36b;border-radius:50%;animation:jt-spin 0.8s linear infinite;vertical-align:middle;"></span>`;
-  const tick = `<span style="font-size:18px;vertical-align:middle;color:#2ecc40;">&#10003;</span>`;
-  const cross = `<span style="font-size:18px;vertical-align:middle;color:#ff4136;">&#10060;</span>`;
-
-  resyncBtn.addEventListener("click", () => {
-    resyncBtn.disabled = true;
-    resyncBtn.innerHTML = `${spinner} Syncing...`;
-    chrome.runtime.sendMessage({ type: "SYNC_SESSION" }, (response) => {
-      if (response?.ok) {
-        resyncBtn.innerHTML = `${tick} Synced!`;
-        resyncBtn.style.backgroundColor = "#eafbe7";
-        resyncBtn.style.color = "#2ecc40";
-        setTimeout(() => resyncBtn.remove(), 2000);
-      } else {
-        resyncBtn.innerHTML = `${cross} Failed`;
-        resyncBtn.style.backgroundColor = "#ffeaea";
-        resyncBtn.style.color = "#ff4136";
-        setTimeout(() => resyncBtn.remove(), 3000);
-      }
-    });
+  connectBtn.addEventListener("click", () => {
+    startAuthFlow();
+    connectBtn.innerHTML = "Opening login...";
+    connectBtn.disabled = true;
+    setTimeout(() => connectBtn.remove(), 2000);
   });
 
-  // Insert next to the Generate Resume button
-  generateBtn.insertAdjacentElement("afterend", resyncBtn);
+  generateBtn.insertAdjacentElement("afterend", connectBtn);
 };
 
-// Update your callGenerateResumeAPI error handling to show the button:
 const callGenerateResumeAPI = async (jobData) => {
-  const token = await getSessionToken();
+  const token = await getAccessToken();
   if (!token) {
-    console.error("Missing Supabase session token. Please re-sync session.");
-    showResyncButton();
-    throw new Error("Missing Supabase session token");
+    console.error("Not authenticated. Please connect to Resume Tailor.");
+    showConnectButton();
+    throw new Error("Not authenticated. Please connect first.");
   }
+
   const requestData = {
     jobInfo: {
       content: jobData.content,
@@ -162,9 +129,8 @@ const callGenerateResumeAPI = async (jobData) => {
   });
 
   if (response.status === 401) {
-    autoSyncSession();
-    showResyncButton();
-    throw new Error("Unauthorized (401)");
+    showConnectButton();
+    throw new Error("Session expired. Please reconnect.");
   }
 
   if (!response.ok) {
@@ -289,5 +255,4 @@ window.addEventListener("load", () => {
   setTimeout(ensureInjectedButton, 1500);
 });
 
-// Auto-sync when the content script loads
-autoSyncSession();
+
